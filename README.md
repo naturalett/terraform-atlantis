@@ -125,4 +125,4 @@ Explore our complete custom workflow [here](https://github.com/naturalett/terraf
 By bringing Atlantis to AWS ECS, we've not just upgraded our IaC game but also turned collaboration into an art. The secret sauce lies in the automation Atlantis brings to our infrastructure.
 
 
-Thanks for joining our adventure! Got questions or want to share your thoughts? Reach out to us at [your_email@example.com](mailto:admin@top10devops.com). Happy coding! 🚀✨
+Thanks for joining our adventure! Got questions or want to share your thoughts? Reach out to us at [admin@top10devops.com](mailto:admin@top10devops.com). Happy coding! 🚀✨
