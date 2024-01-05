@@ -1,0 +1,119 @@
+repos:
+- id: /.*/
+  pre_workflow_hooks:
+    - run: |
+        #!/bin/bash
+
+        num=1
+        create_project_block() {
+            local folder_path="${1:-null}"
+            local parent_name="${2:-null}"
+            local autoplan="${3:-false}"
+            local workflow="${4:-default}"
+            cat <<EOL
+          - name: ${parent_name}
+            dir: ${folder_path}
+            workspace: ${SHORT_ENV}
+            delete_source_branch_on_merge: false
+            repo_locking: true
+            autoplan:
+              enabled: ${autoplan}
+            workflow: ${workflow}
+        EOL
+        num=$((num + 1))
+        }
+
+        iterate_folders() {
+            local temp_yaml="$1"
+
+            for folder_path in $(find . -type d -exec sh -c '[ -n "$(ls "$1"/*.tf* 2>/dev/null)" ]' _ {} \; -print | grep -v '/\.terraform'); do
+                folder_name=$(basename "$folder_path")
+                parent_name=$(dirname "$folder_path" | sed 's|^\./||')
+
+                # Extract substring after "terraform-"
+                suffix=$(echo "$folder_name" | sed -n 's|.*terraform-\(.*\)$|\1|p')
+                if [[ "$folder_name" =~ ^(terraform-backfill)$ ]]; then
+                    parent_name="$parent_name-$suffix"
+                fi
+
+                [ "$parent_name" = '.' ] && parent_name=$folder_name
+
+                # If the substring is not empty, append it to the folder_name
+                if [ -e "$folder_path/${SHORT_ENV}.tfvars" ]; then
+                    create_project_block "$folder_path" "$parent_name" true main-flow >> "$temp_yaml"
+                else
+                    create_project_block ./null "null-$num" >> "$temp_yaml"
+                fi
+            done
+        }
+
+        # Create a temporary file for updated YAML content
+        temp_yaml=$(mktemp)
+
+        # Start with the YAML header
+        cat <<EOL > "$temp_yaml"
+        version: 3
+        delete_source_branch_on_merge: false
+        parallel_plan: true
+        parallel_apply: true
+        abort_on_execution_order_fail: false
+        projects:
+        EOL
+
+        if [ "${SHORT_ENV}" == "mgt" ]; then
+            if [[ "${HEAD_BRANCH_NAME}" =~ [Pp][Rr][Oo][Tt] ]] && [ "${BASE_BRANCH_NAME}" == "develop" ]; then
+                iterate_folders "$temp_yaml"
+            else
+                create_project_block ./null "null-$num" >> "$temp_yaml"
+            fi
+        fi
+
+        if [ "${SHORT_ENV}" == "stg" ] || [ "${SHORT_ENV}" == "stg-eu" ]; then
+            if [[ "${HEAD_BRANCH_NAME}" =~ [Pp][Rr][Oo][Tt] ]] && [ "${BASE_BRANCH_NAME}" == "develop" ]; then
+                iterate_folders "$temp_yaml"
+            else
+                create_project_block ./null "null-$num" >> "$temp_yaml"
+            fi
+        fi
+
+        if [ "${SHORT_ENV}" == "prd" ] || [ "${SHORT_ENV}" == "prd-eu" ]; then
+            if [ "${HEAD_BRANCH_NAME}" == "develop" ] && ( [ "${BASE_BRANCH_NAME}" == "master" ] || [ "${BASE_BRANCH_NAME}" == "main" ] ); then
+                iterate_folders "$temp_yaml"
+            else
+                create_project_block ./null "null-$num" >> "$temp_yaml"
+            fi
+        fi
+
+        # Append the missing workflows section
+        cat <<EOL >> "$temp_yaml"
+        workflows:
+          main-flow:
+            plan:
+              steps:
+              - init:
+                  extra_args: ["-input=false", "-upgrade", "-reconfigure"]
+              - plan:
+                  extra_args: ["-var-file=${SHORT_ENV}.tfvars"]
+            apply:
+              steps:
+              - apply:
+                  extra_args: ["-auto-approve"]
+          default:
+            plan:
+              steps:
+              - run: echo "Staging environment is only done on the feature branch"
+            apply:
+              steps:
+              - run: echo "Staging environment is only done on the feature branch"
+        EOL
+
+        # Replace the original YAML file with the updated content
+        mv "$temp_yaml" atlantis.yaml
+      description: Generating atlantis.yaml
+      shell: bash
+      shellArgs: -cv
+  allowed_overrides: [apply_requirements, workflow, delete_source_branch_on_merge, repo_locking, policy_check]
+  allow_custom_workflows: true
+metrics:
+  prometheus:
+    endpoint: "/metrics"

@@ -1,0 +1,6 @@
+region                  = "us-east-1"
+env                     = "production"
+account_id              = "<ACCOUNT ID>"
+certificate_domain_name = "*.example.com"
+route53_zone_id         = "<ZONE ID>"
+vpc_name                = "<VPC Name>"
